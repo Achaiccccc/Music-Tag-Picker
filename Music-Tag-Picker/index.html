@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>音乐标签选择写入</title>
+<style>
+  :root {
+    --bg: #eef1f4;
+    --panel: #ffffff;
+    --side: #f5f7fa;
+    --line: #e2e6ec;
+    --text: #1c2128;
+    --muted: #667085;
+    --accent: #1d4ed8;
+    --accent-soft: #e8efff;
+    --danger: #b42318;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .06);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    height: 100vh;
+    color: var(--text);
+    background: var(--bg);
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  button, input { font: inherit; }
+  .app { display: grid; grid-template-columns: 300px minmax(280px, 360px) 1fr; height: 100vh; }
+  .side, .files, .work { min-height: 0; display: flex; flex-direction: column; }
+  .side { background: var(--side); border-right: 1px solid var(--line); }
+  .files { background: var(--panel); border-right: 1px solid var(--line); }
+  .work { padding: 20px 22px; overflow: auto; }
+  .pane-head { padding: 16px 16px 8px; }
+  .pane-head h1, .pane-head h2, .work h2 { margin: 0; font-size: 15px; font-weight: 650; }
+  .hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .tree, .file-list, .hit-list, .result-list { overflow: auto; min-height: 0; }
+  .tree { flex: 1; padding: 4px 8px 8px; }
+  .node { display: flex; align-items: center; gap: 4px; width: 100%; min-height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+  .node:hover { background: #e9eef5; }
+  .node.active { background: var(--accent-soft); color: var(--accent); }
+  .chevron { width: 16px; height: 16px; flex: 0 0 16px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+  .chevron.open { transform: rotate(90deg); }
+  .branch { margin-left: 14px; }
+  .local-search { padding: 10px 12px 12px; border-top: 1px solid var(--line); }
+  .field, .search-input {
+    width: 100%;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid #d0d5dd;
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text);
+    outline: none;
+    box-shadow: var(--shadow);
+  }
+  .field:focus, .search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(29, 78, 216, .15); }
+  .hit-list { max-height: 220px; margin-top: 8px; }
+  .hit, .file-row, .song {
+    display: flex;
+    width: 100%;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 10px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+  }
+  .hit { border: 0; border-radius: 6px; }
+  .hit:hover, .file-row:hover, .song:hover { background: #f3f6fb; }
+  .hit.active, .file-row.active, .song.active { background: var(--accent-soft); }
+  .file-list { flex: 1; }
+  .name { font-size: 14px; }
+  .sub { margin-top: 2px; color: var(--muted); font-size: 12px; }
+  .empty { padding: 28px 16px; color: var(--muted); font-size: 13px; }
+  .target {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin: 14px 0 0;
+    padding: 12px;
+    max-width: 520px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+  }
+  .target img, .target-fallback {
+    width: 72px;
+    height: 72px;
+    flex: 0 0 72px;
+    border-radius: 8px;
+    background: #e8edf5;
+  }
+  .target img { object-fit: cover; }
+  .target-fallback {
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 14px 0; }
+  .swap {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    flex: 0 0 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+  }
+  .swap svg { display: block; width: 18px; height: 18px; flex: 0 0 18px; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .chip:has(input:checked) { border-color: #b9ccfb; background: var(--accent-soft); color: var(--accent); }
+  .btn {
+    height: 36px;
+    padding: 0 14px;
+    border: 1px solid #d0d5dd;
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text);
+    cursor: pointer;
+    box-shadow: var(--shadow);
+  }
+  .btn:hover { background: #f8fafc; }
+  .btn.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #1e40af; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .song img, .detail img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; background: #eef1f4; }
+  .detail { display: grid; grid-template-columns: 96px 1fr; gap: 14px; margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+  .detail img { width: 96px; height: 96px; }
+  pre { margin: 8px 0 0; max-height: 260px; overflow: auto; white-space: pre-wrap; color: #344054; font-size: 13px; line-height: 1.6; }
+  .badge { margin-left: 6px; color: var(--accent); font-size: 12px; }
+  .error { color: var(--danger); font-size: 13px; }
+  .status { color: var(--muted); font-size: 13px; }
+  .result-list { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; background: #fff; max-height: 360px; }
+  @media (max-width: 980px) {
+    .app { grid-template-columns: 1fr; height: auto; }
+    .side, .files { height: 420px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="pane-head">
+      <h1>音乐目录</h1>
+      <p class="hint">点击文件夹展开，最多 5 层。点选文件夹后，中间列出其中的音频。</p>
+    </div>
+    <div id="tree-error" class="error" style="padding:0 16px"></div>
+    <div id="tree" class="tree"></div>
+    <div class="local-search">
+      <input id="local-query" class="search-input" type="search" placeholder="搜索本地文件，如歌名或歌手">
+      <div id="local-hits" class="hit-list"></div>
+    </div>
+  </aside>
+
+  <section class="files">
+    <div class="pane-head">
+      <h2 id="folder-title">音频文件</h2>
+      <p class="hint" id="file-label">还没有选择文件。</p>
+    </div>
+    <div id="file-list" class="file-list"></div>
+  </section>
+
+  <main class="work">
+    <h2>在线搜索并写入</h2>
+    <p class="hint">选中文件后会按「歌名 - 歌手」填入，可以直接修改。上方的歌曲信息固定对应当前文件，不会随搜索词改变。</p>
+    <div id="target-card" class="target" hidden>
+      <img id="target-cover" alt="封面" hidden>
+      <div id="target-fallback" class="target-fallback">无封面</div>
+      <div>
+        <div class="hint">当前选中</div>
+        <div id="target-title" class="name"></div>
+        <div id="target-artist" class="sub"></div>
+      </div>
+    </div>
+    <form id="search-form">
+      <div class="toolbar">
+        <input id="title" class="field" style="max-width:240px" type="text" placeholder="歌名" required>
+        <button id="swap" class="btn swap" type="button" title="互换歌名和歌手" aria-label="互换歌名和歌手"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M7 8h9.2M16.2 8l-3.2-3M16.2 8l-3.2 3M17 16H7.8M7.8 16l3.2-3M7.8 16l3.2 3" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <input id="artist" class="field" style="max-width:200px" type="text" placeholder="歌手，可留空">
+        <button class="btn primary" type="submit">搜索</button>
+      </div>
+      <div class="chips">
+        <label class="chip"><input id="pf-netease" type="checkbox" name="platform" value="netease" checked>网易云</label>
+        <label class="chip"><input id="pf-qq" type="checkbox" name="platform" value="qq" checked>QQ 音乐</label>
+        <label class="chip"><input id="pf-migu" type="checkbox" name="platform" value="migu" checked>咪咕</label>
+        <label class="chip"><input id="pf-kugou" type="checkbox" name="platform" value="kugou" checked>酷狗</label>
+      </div>
+    </form>
+    <p class="hint">网易云会向后翻页。现场版和翻唱会保留，较接近的结果排在前面。</p>
+    <div id="search-error" class="error"></div>
+    <div id="results" class="result-list" hidden></div>
+    <div id="detail"></div>
+    <div class="toolbar">
+      <button id="write" class="btn primary" type="button" disabled>写入选中的文件</button>
+      <span id="write-status" class="status"></span>
+    </div>
+  </main>
+</div>
+<script>
+let selectedFolder = "";
+let selectedFile = "";
+let selectedSong = null;
+const expanded = new Set([""]);
+const cache = new Map();
+const tree = document.getElementById("tree");
+const treeError = document.getElementById("tree-error");
+const fileList = document.getElementById("file-list");
+const fileLabel = document.getElementById("file-label");
+const folderTitle = document.getElementById("folder-title");
+const localHits = document.getElementById("local-hits");
+const results = document.getElementById("results");
+const detail = document.getElementById("detail");
+const writeButton = document.getElementById("write");
+const writeStatus = document.getElementById("write-status");
+
+function joinPath(parent, name) {
+  return parent ? parent + "/" + name : name;
+}
+
+async function loadDir(path) {
+  if (cache.has(path)) return cache.get(path);
+  const response = await fetch("/api/browse?" + new URLSearchParams({path, base: "", picking: "0"}));
+  const data = await response.json();
+  if (data.ok) cache.set(path, data);
+  return data;
+}
+
+function renderFiles(path, data) {
+  folderTitle.textContent = path || "音乐根目录";
+  fileList.textContent = "";
+  const files = (data && data.files) || [];
+  if (!files.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = data && data.ok === false ? data.error : "这个文件夹里没有音频文件。";
+    fileList.appendChild(empty);
+    return;
+  }
+  files.forEach((file) => {
+    const rel = joinPath(path, file.name);
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "file-row" + (rel === selectedFile ? " active" : "");
+    row.dataset.path = rel;
+    const text = document.createElement("div");
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = file.name;
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = [file.title, file.artist].filter(Boolean).join(" · ");
+    text.appendChild(name);
+    text.appendChild(sub);
+    row.appendChild(text);
+    row.addEventListener("click", () => selectFile(rel, file));
+    fileList.appendChild(row);
+  });
+}
+
+async function selectFolder(path) {
+  selectedFolder = path;
+  const data = await loadDir(path);
+  treeError.textContent = data.ok ? "" : (data.error || "无法读取目录");
+  renderFiles(path, data);
+  await renderTree();
+}
+
+const targetCard = document.getElementById("target-card");
+const targetCover = document.getElementById("target-cover");
+const targetFallback = document.getElementById("target-fallback");
+let coverToken = 0;
+
+function showTarget(rel, file) {
+  const token = ++coverToken;
+  targetCard.hidden = false;
+  document.getElementById("target-title").textContent = file.title || file.name || "未识别歌名";
+  document.getElementById("target-artist").textContent = file.artist || "未识别歌手";
+  targetCover.hidden = true;
+  targetFallback.hidden = false;
+  targetCover.onload = () => {
+    if (token !== coverToken) return;
+    targetCover.hidden = false;
+    targetFallback.hidden = true;
+  };
+  targetCover.onerror = () => {
+    if (token !== coverToken) return;
+    targetCover.removeAttribute("src");
+    targetCover.hidden = true;
+    targetFallback.hidden = false;
+  };
+  targetCover.src = "/api/cover?" + new URLSearchParams({path: rel, v: String(token)});
+}
+
+function selectFile(rel, file) {
+  selectedFile = rel;
+  document.getElementById("title").value = file.title || "";
+  document.getElementById("artist").value = file.artist || "";
+  fileLabel.textContent = "当前文件：" + rel;
+  showTarget(rel, file);
+  writeButton.disabled = !selectedSong;
+  document.querySelectorAll(".file-row, .hit").forEach((node) => {
+    node.classList.toggle("active", node.dataset.path === rel);
+  });
+}
+
+document.getElementById("swap").addEventListener("click", () => {
+  const title = document.getElementById("title");
+  const artist = document.getElementById("artist");
+  const next = title.value;
+  title.value = artist.value;
+  artist.value = next;
+});
+
+async function renderBranch(path, container) {
+  const data = await loadDir(path);
+  if (!data.ok) {
+    treeError.textContent = data.error || "无法读取目录";
+    return;
+  }
+  for (const name of data.dirs || []) {
+    const rel = joinPath(path, name);
+    const open = expanded.has(rel);
+    const row = document.createElement("div");
+    row.style.display = "flex";
+    const chevron = document.createElement("button");
+    chevron.type = "button";
+    chevron.className = "chevron" + (open ? " open" : "");
+    chevron.textContent = "›";
+    chevron.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      if (open) expanded.delete(rel);
+      else expanded.add(rel);
+      await renderTree();
+    });
+    const label = document.createElement("button");
+    label.type = "button";
+    label.className = "node" + (rel === selectedFolder ? " active" : "");
+    label.textContent = name;
+    label.addEventListener("click", () => {
+      expanded.add(rel);
+      selectFolder(rel);
+    });
+    row.appendChild(chevron);
+    row.appendChild(label);
+    container.appendChild(row);
+    if (open) {
+      const branch = document.createElement("div");
+      branch.className = "branch";
+      container.appendChild(branch);
+      await renderBranch(rel, branch);
+    }
+  }
+}
+
+async function renderTree() {
+  tree.textContent = "";
+  const root = document.createElement("button");
+  root.type = "button";
+  root.className = "node" + (selectedFolder === "" ? " active" : "");
+  root.textContent = "音乐根目录";
+  root.addEventListener("click", () => selectFolder(""));
+  tree.appendChild(root);
+  await renderBranch("", tree);
+}
+
+let localTimer = 0;
+document.getElementById("local-query").addEventListener("input", (event) => {
+  clearTimeout(localTimer);
+  const query = event.target.value.trim();
+  localTimer = setTimeout(() => searchLocal(query), 250);
+});
+
+async function searchLocal(query) {
+  localHits.textContent = "";
+  if (!query) return;
+  const response = await fetch("/api/local-search?" + new URLSearchParams({q: query}));
+  const data = await response.json();
+  if (!data.ok) {
+    localHits.textContent = data.error || "搜索失败";
+    return;
+  }
+  if (!data.files.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "没有匹配的本地文件。";
+    localHits.appendChild(empty);
+    return;
+  }
+  data.files.forEach((file) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "hit" + (file.path === selectedFile ? " active" : "");
+    row.dataset.path = file.path;
+    const text = document.createElement("div");
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = file.name;
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = file.path;
+    text.appendChild(name);
+    text.appendChild(sub);
+    row.appendChild(text);
+    row.addEventListener("click", () => selectFile(file.path, file));
+    localHits.appendChild(row);
+  });
+  if (data.total > data.files.length) {
+    const more = document.createElement("div");
+    more.className = "hint";
+    more.textContent = "还有 " + (data.total - data.files.length) + " 条，请把关键词写得更具体。";
+    localHits.appendChild(more);
+  }
+}
+
+document.getElementById("search-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const title = document.getElementById("title").value.trim();
+  const artist = document.getElementById("artist").value.trim();
+  const platforms = [...document.querySelectorAll("input[name=platform]:checked")].map((node) => node.value);
+  const errorNode = document.getElementById("search-error");
+  detail.textContent = "";
+  selectedSong = null;
+  writeButton.disabled = true;
+  if (!platforms.length) {
+    errorNode.textContent = "至少选择一个平台";
+    results.hidden = true;
+    return;
+  }
+  results.hidden = false;
+  results.textContent = "正在搜索…";
+  const response = await fetch("/api/search?" + new URLSearchParams({title, artist, platforms: platforms.join(",")}));
+  const data = await response.json();
+  results.textContent = "";
+  errorNode.textContent = (data.errors || []).map((item) => item.label + "：" + item.error).join("；");
+  if (!data.ok) {
+    errorNode.textContent = data.error || errorNode.textContent;
+    results.hidden = true;
+    return;
+  }
+  if (!data.songs.length) {
+    results.textContent = "没有搜索结果。";
+    return;
+  }
+  data.songs.forEach((song) => {
+    const node = document.createElement("button");
+    node.type = "button";
+    node.className = "song";
+    if (song.cover_url) {
+      const image = document.createElement("img");
+      image.alt = "";
+      image.src = song.cover_url;
+      node.appendChild(image);
+    }
+    const text = document.createElement("div");
+    const titleLine = document.createElement("div");
+    titleLine.className = "name";
+    titleLine.textContent = song.label + " · " + song.name;
+    if (song.preferred) {
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = "推荐";
+      titleLine.appendChild(badge);
+    }
+    const meta = document.createElement("div");
+    meta.className = "sub";
+    meta.textContent = (song.artists || []).join(" / ") + " · " + (song.album || "无专辑")
+      + " · " + (song.duration_ms ? Math.round(song.duration_ms / 1000) + " 秒" : "时长未知");
+    text.appendChild(titleLine);
+    text.appendChild(meta);
+    node.appendChild(text);
+    node.addEventListener("click", () => showSong(song, node));
+    results.appendChild(node);
+  });
+});
+
+async function showSong(song, node) {
+  selectedSong = song;
+  [...results.querySelectorAll(".song")].forEach((item) => item.classList.remove("active"));
+  node.classList.add("active");
+  writeButton.disabled = !selectedFile;
+  detail.textContent = "正在读取歌词…";
+  const response = await fetch("/api/lyric", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({song})
+  });
+  const data = await response.json();
+  detail.textContent = "";
+  const box = document.createElement("div");
+  box.className = "detail";
+  if (song.cover_url) {
+    const image = document.createElement("img");
+    image.alt = "封面";
+    image.src = song.cover_url;
+    box.appendChild(image);
+  }
+  const text = document.createElement("div");
+  const heading = document.createElement("div");
+  heading.className = "name";
+  heading.textContent = song.name + " · " + (song.artists || []).join(" / ");
+  const album = document.createElement("div");
+  album.className = "sub";
+  album.textContent = song.album || "";
+  const lyric = document.createElement("pre");
+  lyric.textContent = data.lyric || data.error || "没有歌词";
+  text.appendChild(heading);
+  text.appendChild(album);
+  text.appendChild(lyric);
+  box.appendChild(text);
+  detail.appendChild(box);
+}
+
+writeButton.addEventListener("click", async () => {
+  if (!selectedFile || !selectedSong) return;
+  if (!confirm("把这条候选的歌名、歌手、专辑、歌词和封面写入当前文件？")) return;
+  writeStatus.textContent = "正在写入…";
+  const response = await fetch("/api/write", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({path: selectedFile, song: selectedSong})
+  });
+  const data = await response.json();
+  writeStatus.className = data.ok ? "status" : "error";
+  writeStatus.textContent = data.ok
+    ? "已写入" + data.file + "：" + (data.written || []).join("、") + (data.cover_note ? "。" + data.cover_note : "")
+    : (data.error || "写入失败");
+});
+
+selectFolder("");
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+services:
+  source-probe:
+    build: .
+    image: musicsp-source-probe:demo
+    container_name: musicsp-source-probe
+    ports:
+      - "8090:8080"
+    environment:
+      MUSIC_ROOT: /music
+    volumes:
+      # 改成绿联上存放音乐的目录。容器内固定读取 /music。
+      - ${MUSIC_PATH:-./music}:/music
+    restart: unless-stopped
